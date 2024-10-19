@@ -65,7 +65,7 @@ generateChunk(0, 0);
 
 // Player controls
 const playerSpeed = 0.1;
-const jumpForce = 0.2; // Jumping force
+const jumpForce = 0.5; // Jumping force
 let velocity = new THREE.Vector3(0, 0, 0);
 let isJumping = false;
 const keys = {};
