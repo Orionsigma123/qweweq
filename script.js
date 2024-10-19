@@ -1,280 +1,186 @@
 // Setup basic scene, camera, and renderer
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ alpha: true });
+const renderer = new THREE.WebGLRenderer({ alpha: true }); // Enable alpha for transparency
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // Set the background color of the scene
-renderer.setClearColor(0x87CEEB, 1);
+renderer.setClearColor(0x87CEEB, 1); // Sky blue color
 
 // Textures
-const grassTexture = new THREE.TextureLoader().load('textures/grass.png');
-const dirtTexture = new THREE.TextureLoader().load('textures/dirt.png');
-const stoneTexture = new THREE.TextureLoader().load('textures/stone.png');
+const grassTexture = new THREE.TextureLoader().load('Textures/grass.png'); // Replace with your grass texture path
+const cobblestoneTexture = new THREE.TextureLoader().load('Textures/stone.png');
+const dirtTexture = new THREE.TextureLoader().load('Textures/dirt.png');
 
-// Inventory
+// Inventory system (Array to store collected blocks)
 const inventory = [];
 
-// Store worlds data
-const worlds = {};
+// Block-breaking crosshair logic
+const crosshair = document.createElement('div');
+crosshair.style.width = '20px';
+crosshair.style.height = '20px';
+crosshair.style.position = 'absolute';
+crosshair.style.top = '50%';
+crosshair.style.left = '50%';
+crosshair.style.transform = 'translate(-50%, -50%)';
+crosshair.style.border = '2px solid black';
+document.body.appendChild(crosshair);
 
-// World settings
-const chunkSize = 16; // Size of each chunk
-const chunkHeight = 5; // Max height of blocks in a chunk
-let renderDistance = 4; // Number of chunks to render around the player
-let noiseScale = 0.1; // Adjust for terrain smoothness
-let simplex = new SimplexNoise(); // Initialize SimplexNoise
-const chunks = {}; // Object to store generated chunks
+// Block parameters and world generation settings
+const blockSize = 1;
+const renderDistance = 4; // Adjust render distance for performance
+const chunkSize = 16;
+const chunkHeight = 5;
+const noiseScale = 0.1;
+const simplex = new SimplexNoise();
 
 // Function to create a block
-function createBlock(x, y, z, texture, type) {
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
+function createBlock(x, y, z, texture) {
+    const geometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
     const material = new THREE.MeshBasicMaterial({ map: texture });
     const block = new THREE.Mesh(geometry, material);
-    block.position.set(x, y, z);
-    block.userData = { type }; // Add type to block for identification
-    return block;
+    block.position.set(x * blockSize, y * blockSize, z * blockSize);
+    block.userData = { isBlock: true }; // Tag the object as a block
+    scene.add(block);
 }
 
-// Function to generate a chunk
-function generateChunk(chunkX, chunkZ) {
-    const chunk = new THREE.Group(); // Group to hold all blocks in this chunk
+// Generate world using Simplex noise
+function generateChunk(xOffset, zOffset) {
     for (let x = 0; x < chunkSize; x++) {
         for (let z = 0; z < chunkSize; z++) {
-            // Generate height based on Simplex noise
-            const height = Math.floor(simplex.noise2D((chunkX * chunkSize + x) * noiseScale, (chunkZ * chunkSize + z) * noiseScale) * chunkHeight);
-
+            const worldX = x + xOffset;
+            const worldZ = z + zOffset;
+            const height = Math.floor(simplex.noise2D(worldX * noiseScale, worldZ * noiseScale) * chunkHeight);
             for (let y = 0; y <= height; y++) {
-                let texture = grassTexture; // Default texture for the top block
-                let type = 'grass'; // Default block type
-
-                if (y < height - 1) {
-                    texture = dirtTexture; // Dirt for blocks below the surface
-                    type = 'dirt';
-                }
-                if (y === height) {
-                    texture = grassTexture; // Grass on top
-                    type = 'grass';
-                } else if (y < height - 1) {
-                    texture = stoneTexture; // Stone for below dirt
-                    type = 'stone';
-                }
-                
-                const block = createBlock(chunkX * chunkSize + x, y, chunkZ * chunkSize + z, texture, type);
-                chunk.add(block);
+                const texture = (y === height) ? grassTexture : dirtTexture; // Grass on top, dirt below
+                createBlock(worldX, y, worldZ, texture);
             }
         }
     }
-    chunks[`${chunkX},${chunkZ}`] = chunk; // Store the chunk in the chunks object
-    scene.add(chunk); // Add the chunk to the scene
 }
 
-// Function to update the visible chunks based on player's position
-function updateChunks() {
-    const playerChunkX = Math.floor(camera.position.x / chunkSize);
-    const playerChunkZ = Math.floor(camera.position.z / chunkSize);
-
-    // Determine which chunks to render
-    const renderedChunks = new Set(); // Keep track of rendered chunks
-
-    for (let x = -renderDistance; x <= renderDistance; x++) {
-        for (let z = -renderDistance; z <= renderDistance; z++) {
-            const chunkKey = `${playerChunkX + x},${playerChunkZ + z}`;
-            if (!chunks[chunkKey]) {
-                generateChunk(playerChunkX + x, playerChunkZ + z); // Generate chunk if it doesn't exist
-            }
-            renderedChunks.add(chunkKey); // Add to the set of rendered chunks
-        }
-    }
-
-    // Remove chunks that are not in the rendered set
-    for (const key in chunks) {
-        if (!renderedChunks.has(key)) {
-            scene.remove(chunks[key]); // Remove chunk from the scene
-            delete chunks[key]; // Remove from chunks object
-        }
-    }
-}
-
-// Function to create a new world
-function makeNewWorld() {
-    // Clear existing chunks
-    for (const key in chunks) {
-        scene.remove(chunks[key]);
-        delete chunks[key];
-    }
-
-    // Reset the inventory
-    inventory.length = 0; // Clear the inventory
-
-    // Regenerate the noise generator with a new seed
-    simplex = new SimplexNoise(Math.random); // Create a new SimplexNoise instance
-
-    // Regenerate the world
-    updateChunks(); // Call to generate new chunks
-    document.getElementById('message').textContent = "New world created!";
-}
-
-// Initial call to generate chunks based on the initial player position
-updateChunks();
-
-// Position the camera to be just above the ground
-camera.position.set(25, 1.5, 25);
+// Generate initial chunks around the player
+generateChunk(0, 0);
 
 // Player controls
 const playerSpeed = 0.1;
-const jumpForce = 0.2;
+const jumpForce = 0.2; // Jumping force
 let velocity = new THREE.Vector3(0, 0, 0);
 let isJumping = false;
 const keys = {};
 let mousePressed = false;
 let selectedBlock = null;
 
-// Crosshair setup
-const crosshairSize = 10; // Crosshair size in pixels
-const crosshairColor = 'red'; // Crosshair color
+// Capture key presses
+window.addEventListener('keydown', (event) => {
+    keys[event.code] = true;
+});
+window.addEventListener('keyup', (event) => {
+    keys[event.code] = false;
+});
 
-// Create a crosshair element
-const crosshair = document.createElement('div');
-crosshair.style.position = 'absolute';
-crosshair.style.width = `${crosshairSize}px`;
-crosshair.style.height = `${crosshairSize}px`;
-crosshair.style.backgroundColor = crosshairColor;
-crosshair.style.border = `1px solid ${crosshairColor}`;
-crosshair.style.transform = 'translate(-50%, -50%)';
-crosshair.style.pointerEvents = 'none'; // Prevent mouse events on the crosshair
-document.body.appendChild(crosshair);
+// Handle left mouse button down (for breaking blocks)
+window.addEventListener('mousedown', (event) => {
+    if (event.button === 0) { // Left mouse button
+        mousePressed = true;
+        selectedBlock = getBlockUnderCursor();
+    }
+});
 
-// Update crosshair position
-function updateCrosshair() {
-    const screenPosition = new THREE.Vector3(0, 0, -5).applyMatrix4(camera.matrixWorld);
-    const vector = screenPosition.project(camera);
-    
-    const x = (vector.x * .5 + .5) * window.innerWidth;
-    const y = (-(vector.y * .5) + .5) * window.innerHeight;
+// Handle left mouse button up
+window.addEventListener('mouseup', (event) => {
+    if (event.button === 0 && selectedBlock) { // Left mouse button
+        inventory.push(selectedBlock.material.map); // Add block to inventory
+        scene.remove(selectedBlock); // Remove the block from the scene
+        selectedBlock = null;
+        mousePressed = false;
+    }
+});
 
-    crosshair.style.left = `${x}px`;
-    crosshair.style.top = `${y}px`;
+// Raycasting logic to get the block under the cursor
+function getBlockUnderCursor() {
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(scene.children);
+
+    return intersects.length > 0 ? intersects[0].object : null;
 }
 
-// Function to lock the mouse pointer
-function lockPointer() {
-    document.body.requestPointerLock();
-}
-
-// Lock the pointer on mouse click
-document.body.addEventListener('click', lockPointer);
-
-// Mouse movement for looking around
+// Mouse movement for camera control (lock pointer)
 let pitch = 0;
 let yaw = 0;
 const lookSensitivity = 0.1;
-
-// Adjust the camera rotation logic to lock the Z-axis (roll)
+document.body.addEventListener('click', () => {
+    document.body.requestPointerLock();
+});
 document.addEventListener('mousemove', (event) => {
     if (document.pointerLockElement) {
         yaw -= event.movementX * lookSensitivity;
         pitch -= event.movementY * lookSensitivity;
         pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
-        camera.rotation.order = "YXZ";
+        camera.rotation.order = 'YXZ';
         camera.rotation.set(pitch, yaw, 0);
     }
 });
 
-// Function to handle player movement based on head orientation
+// Player movement logic
 function updatePlayer() {
-    velocity.set(0, 0, 0); // Reset velocity
+    velocity.set(0, 0, 0);
 
-    // Calculate the forward direction based on the camera's rotation, ignoring the Y-axis
-    const forward = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation);
-    forward.y = 0; // Prevent upward movement
-    forward.normalize(); // Normalize the vector
-    const right = new THREE.Vector3(1, 0, 0).applyEuler(camera.rotation);
-    right.normalize();
+    if (keys['KeyW']) velocity.z = -playerSpeed;
+    if (keys['KeyS']) velocity.z = playerSpeed;
+    if (keys['KeyA']) velocity.x = -playerSpeed;
+    if (keys['KeyD']) velocity.x = playerSpeed;
 
-    if (keys['KeyW']) { // Move forward (W)
-        velocity.add(forward.clone().multiplyScalar(playerSpeed)); // Move in the forward direction
-    }
-    if (keys['KeyS']) { // Move backward (S)
-        velocity.add(forward.clone().multiplyScalar(-playerSpeed)); // Move in the backward direction
-    }
-    if (keys['KeyA']) { // Move left (A)
-        velocity.add(right.clone().multiplyScalar(-playerSpeed)); // Move in the left direction
-    }
-    if (keys['KeyD']) { // Move right (D)
-        velocity.add(right.clone().multiplyScalar(playerSpeed)); // Move in the right direction
-    }
-
-    // Jumping logic
     if (keys['Space'] && !isJumping) {
         isJumping = true;
-        velocity.y = jumpForce; // Apply jumping force
+        velocity.y = jumpForce;
     }
 
-    // Apply gravity
-    if (isJumping) {
-        velocity.y -= 0.01; // Apply a simple gravity
-    }
-
-    // Check for ground contact to reset jumping
-    if (camera.position.y <= 1.5) {
+    if (camera.position.y > 1.5) {
+        velocity.y -= 0.01; // Gravity
+    } else {
         isJumping = false;
-        camera.position.y = 1.5; // Reset camera height
-    } else {
-        // Limit upward movement to prevent flying
-        camera.position.y = Math.max(camera.position.y, 1.5);
+        camera.position.y = 1.5;
+        velocity.y = 0;
     }
 
-    // Calculate the potential new position
-    const newPosition = camera.position.clone().add(velocity);
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    direction.y = 0; // Ignore vertical movement
+    direction.normalize();
 
-    // Check for collisions
-    if (!checkCollisions(newPosition)) {
-        // No collision, update the player's position
-        camera.position.copy(newPosition);
-    } else {
-        // Collision detected, stop movement
-        velocity.set(0, 0, 0);
+    camera.position.x += direction.x * -velocity.z;
+    camera.position.z += direction.z * -velocity.z;
+    camera.position.y += velocity.y;
+
+    // Prevent player from phasing through blocks
+    const groundHeight = Math.floor(simplex.noise2D(camera.position.x * noiseScale, camera.position.z * noiseScale) * chunkHeight);
+    if (camera.position.y < groundHeight + 1.5) {
+        camera.position.y = groundHeight + 1.5;
     }
-
-    updateCrosshair(); // Update crosshair position
 }
 
-// Check for collisions with blocks
-function checkCollisions(newPosition) {
-    const raycaster = new THREE.Raycaster();
-    const direction = newPosition.clone().sub(camera.position).normalize(); // Direction of movement
-    raycaster.set(camera.position, direction);
-
-    // Check for collisions with blocks in the scene
-    const intersects = raycaster.intersectObjects(scene.children, true); // Check all objects in the scene
-
-    if (intersects.length > 0) {
-        const distance = intersects[0].distance;
-        if (distance < 1) { // If collision is within 1 unit, block movement
-            return true;
-        }
-    }
-    return false;
-}
-
-// Handle keyboard input
-document.addEventListener('keydown', (event) => {
-    keys[event.code] = true;
-});
-
-document.addEventListener('keyup', (event) => {
-    keys[event.code] = false;
+// Handle window resizing
+window.addEventListener('resize', () => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    renderer.setSize(width, height);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
 });
 
 // Render loop
 function animate() {
     requestAnimationFrame(animate);
-    updatePlayer(); // Update player position
-    updateChunks(); // Update visible chunks
+    updatePlayer(); // Update player movement
     renderer.render(scene, camera);
 }
 
-// Start the animation loop
+// Start the render loop
 animate();
