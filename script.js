@@ -8,6 +8,11 @@ document.body.appendChild(renderer.domElement);
 // Set the background color of the scene
 renderer.setClearColor(0x87CEEB, 1); // Sky blue color
 
+// Load textures
+const grassTexture = new THREE.TextureLoader().load('Textures/grass.png');
+const dirtTexture = new THREE.TextureLoader().load('Textures/dirt.png');
+const stoneTexture = new THREE.TextureLoader().load('Textures/stone.png');
+
 const blockSize = 1;
 const chunkSize = 16; // Size of each chunk (16x16 blocks)
 const viewDistance = 5; // Chunks to render in each direction from the player
@@ -17,12 +22,9 @@ const chunks = new Map(); // Store generated chunks
 const dirtThreshold = -0.3; // Threshold for adding dirt
 
 // Function to create a block with textures
-function createBlock(x, y, z, texturePath) {
+function createBlock(x, y, z, texture) {
     const geometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
-    const textureLoader = new THREE.TextureLoader();
-    const material = new THREE.MeshStandardMaterial({ 
-        map: textureLoader.load(texturePath) 
-    });
+    const material = new THREE.MeshStandardMaterial({ map: texture });
     const block = new THREE.Mesh(geometry, material);
     block.position.set(x * blockSize, y * blockSize, z * blockSize);
     return block;
@@ -38,14 +40,23 @@ function generateChunk(chunkX, chunkZ) {
             const height = Math.floor(noiseValue * 5); // Max height of 5 blocks
 
             for (let y = 0; y <= height; y++) {
-                const blockType = height > 0 ? "Textures/grass.png" : "Textures/dirt.png"; // Use paths for textures
-                const block = createBlock(x + chunkX * chunkSize, y, z + chunkZ * chunkSize, blockType);
+                let texture = grassTexture; // Default texture is grass for the top block
+                if (y < height - 1) {
+                    texture = dirtTexture; // Dirt for blocks below the top
+                }
+                if (y === height) {
+                    texture = grassTexture; // Grass on the top block
+                } else if (y < height - 1) {
+                    texture = stoneTexture; // Stone for below the dirt layer
+                }
+
+                const block = createBlock(x + chunkX * chunkSize, y, z + chunkZ * chunkSize, texture);
                 chunk.add(block);
             }
 
             // Add dirt blocks where the noise is below the threshold
             if (noiseValue < dirtThreshold) {
-                const dirtBlock = createBlock(x + chunkX * chunkSize, 0, z + chunkZ * chunkSize, "Textures/dirt.png"); // Use dirt texture
+                const dirtBlock = createBlock(x + chunkX * chunkSize, 0, z + chunkZ * chunkSize, dirtTexture); // Dirt texture
                 chunk.add(dirtBlock);
             }
         }
@@ -57,7 +68,7 @@ function generateChunk(chunkX, chunkZ) {
 function updateChunks() {
     const playerChunkX = Math.floor(camera.position.x / chunkSize);
     const playerChunkZ = Math.floor(camera.position.z / chunkSize);
-    
+
     // Iterate through chunks to render
     for (let x = playerChunkX - viewDistance; x <= playerChunkX + viewDistance; x++) {
         for (let z = playerChunkZ - viewDistance; z <= playerChunkZ + viewDistance; z++) {
