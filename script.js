@@ -227,17 +227,14 @@ function updatePlayer() {
         camera.position.y = Math.max(camera.position.y, 1.5);
     }
 
-    // Calculate the potential new position
-    const newPosition = camera.position.clone().add(velocity);
+    // Check for collisions and allow stepping
+    checkCollisions(camera.position);
 
-    // Check for collisions
-    if (!checkCollisions(newPosition)) {
-        // No collision, update position
-        camera.position.copy(newPosition);
-    }
+    // Apply velocity to the camera position
+    camera.position.add(velocity);
 }
 
-// Event listeners for key presses
+// Track keypresses for movement
 document.addEventListener('keydown', (event) => {
     keys[event.code] = true;
 });
@@ -245,23 +242,75 @@ document.addEventListener('keyup', (event) => {
     keys[event.code] = false;
 });
 
-// Collision detection
+// Add mouse click handling
+document.addEventListener('mousedown', () => {
+    mousePressed = true;
+});
+
+document.addEventListener('mouseup', () => {
+    mousePressed = false;
+    if (selectedBlock) {
+        scene.remove(selectedBlock); // Remove block from the scene
+        selectedBlock = null; // Clear the selected block
+    }
+});
+
+// Function to handle collisions with stepping logic
 function checkCollisions(position) {
-    // Basic collision detection with ground (Y=0)
-    if (position.y < 0) return true; // Prevent falling through the ground
+    const blockBelow = Math.floor(position.y) - 1; // Block directly below the player's feet
 
-    // Add more complex collision detection here if needed
+    // Check if the player is hitting a block at their current position
+    const chunkX = Math.floor(position.x / chunkSize);
+    const chunkZ = Math.floor(position.z / chunkSize);
+    const chunkKey = `${chunkX},${chunkZ}`;
 
-    return false;
+    if (chunks[chunkKey]) {
+        const chunk = chunks[chunkKey];
+
+        // Check each block in the chunk for collisions
+        for (let i = 0; i < chunk.children.length; i++) {
+            const block = chunk.children[i];
+
+            // Get block's bounding box
+            const blockBB = new THREE.Box3().setFromObject(block);
+
+            // Create a bounding box for the player's position
+            const playerBB = new THREE.Box3(
+                new THREE.Vector3(position.x - 0.25, position.y - 1.5, position.z - 0.25),
+                new THREE.Vector3(position.x + 0.25, position.y + 0.5, position.z + 0.25)
+            );
+
+            // Check for collision
+            if (blockBB.intersectsBox(playerBB)) {
+                if (block.position.y + 1 <= position.y) {
+                    // If the block is below the player's feet, allow stepping
+                    position.y = block.position.y + 1.5; // Step up
+                    isJumping = false; // Reset jumping state after stepping
+                } else {
+                    // Prevent the player from moving into the block
+                    position.x = camera.position.x; // Prevent movement along the X axis
+                    position.z = camera.position.z; // Prevent movement along the Z axis
+                }
+            }
+        }
+    }
 }
 
-// Render loop
+// Animate the scene
 function animate() {
     requestAnimationFrame(animate);
-    updatePlayer(); // Update player position based on input
-    updateCrosshair(); // Update the crosshair's position
-    updateChunks(); // Update the chunks based on player position
-    renderer.render(scene, camera); // Render the scene
+
+    // Update the player's position
+    updatePlayer();
+
+    // Update chunks around the player
+    updateChunks();
+
+    // Update crosshair position
+    updateCrosshair();
+
+    renderer.render(scene, camera);
 }
 
-animate();
+animate(); // Start animation loop
+
