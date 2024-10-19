@@ -28,6 +28,7 @@ function createBlock(x, y, z, texture) {
     const material = new THREE.MeshBasicMaterial({ map: texture }); // Use the specified texture
     const block = new THREE.Mesh(geometry, material);
     block.position.set(x * blockSize, y * blockSize, z * blockSize);
+    block.userData = { x, y, z }; // Store position for easy access later
     scene.add(block);
 }
 
@@ -47,16 +48,25 @@ function generateWorld() {
 generateWorld();
 
 // Position the camera to be just above the ground
-camera.position.set(25, 1.5, 25); // Adjust height to be just above the blocks
+camera.position.set(25, 2, 25); // Adjust height to be just above the blocks (2 blocks tall)
 
 // Player controls
 const playerSpeed = 0.1;
-const jumpForce = 0.2; // Jumping force
+const jumpForce = 0.3; // Jumping force increased
 let velocity = new THREE.Vector3(0, 0, 0);
 let isJumping = false;
 const keys = {};
 let mousePressed = false;
 let selectedBlock = null;
+
+// Inventory management functions
+function addToInventory(block) {
+    const emptySlot = inventory.findIndex(item => item === undefined); // Find first empty slot
+    if (emptySlot !== -1) {
+        inventory[emptySlot] = block; // Add block to inventory
+        renderInventory(); // Update the inventory UI
+    }
+}
 
 window.addEventListener('keydown', (event) => {
     keys[event.code] = true;
@@ -65,39 +75,34 @@ window.addEventListener('keyup', (event) => {
     keys[event.code] = false;
 });
 
-// Handle left mouse button down event
-window.addEventListener('mousedown', (event) => {
-    if (event.button === 0) { // Left mouse button
-        mousePressed = true;
-        selectedBlock = getBlockUnderCursor(); // Get the block under the cursor
-    }
-});
+// Function to simulate block breaking and add to inventory
+function breakBlock(block) {
+    const blockPosition = block.userData; // Get block position
+    addToInventory({ name: 'Grass Block', texture: grassTexture }); // Add block to inventory
+    scene.remove(block); // Remove block from scene
+}
 
-// Handle left mouse button up event
-window.addEventListener('mouseup', (event) => {
-    if (event.button === 0) { // Left mouse button
-        mousePressed = false;
-        if (selectedBlock) {
-            // Add block to inventory and remove from scene
-            inventory.push(selectedBlock.material.map); // Store the texture or block type
-            scene.remove(selectedBlock); // Remove the block from the scene
-            selectedBlock = null; // Reset selected block
-        }
-    }
-});
-
-// Function to get the block under the cursor
-function getBlockUnderCursor() {
+// Function to get the block under the crosshair (not mouse pointer)
+function getBlockUnderCrosshair() {
     const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, camera);
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    
+    raycaster.set(camera.position, cameraDirection); // Cast ray from camera in its direction
     const intersects = raycaster.intersectObjects(scene.children);
 
     return intersects.length > 0 ? intersects[0].object : null; // Return the block if intersected
 }
+
+// Handle left mouse button down event (to break a block)
+window.addEventListener('mousedown', (event) => {
+    if (event.button === 0) { // Left mouse button
+        const block = getBlockUnderCrosshair(); // Get the block under the crosshair
+        if (block) {
+            breakBlock(block); // Break the block
+        }
+    }
+});
 
 // Function to lock the mouse pointer
 function lockPointer() {
@@ -150,11 +155,11 @@ function updatePlayer() {
     }
 
     // Apply gravity
-    if (camera.position.y > 1.5) {
-        velocity.y -= 0.01; // Gravity effect
+    if (camera.position.y > 2) { // Player height is 2 blocks
+        velocity.y -= 0.1; // Gravity effect
     } else {
         isJumping = false; // Reset jumping when hitting the ground
-        camera.position.y = 1.5; // Ensure the camera stays above ground
+        camera.position.y = 2; // Ensure the camera stays above ground (2 blocks tall)
         velocity.y = 0; // Reset vertical velocity when on the ground
     }
 
@@ -175,8 +180,8 @@ function updatePlayer() {
 
     // Check collision with ground (simple method)
     const groundHeight = Math.floor(simplex.noise2D(camera.position.x * noiseScale, camera.position.z * noiseScale) * 5); // Check height at camera position
-    if (camera.position.y < groundHeight + 1.5) {
-        camera.position.y = groundHeight + 1.5; // Place the camera on top of the ground
+    if (camera.position.y < groundHeight + 2) { // Ensure player can only jump one block height
+        camera.position.y = groundHeight + 2; // Place the camera on top of the ground (2 blocks tall)
     }
 }
 
@@ -216,4 +221,4 @@ function animate() {
 }
 
 // Start animation
-animate();
+animate(); 
