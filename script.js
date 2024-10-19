@@ -14,11 +14,20 @@ const viewDistance = 5; // Chunks to render in each direction from the player
 const noiseScale = 0.1; // Adjust for terrain smoothness
 const simplex = new SimplexNoise();
 const chunks = new Map(); // Store generated chunks
+const dirtThreshold = -0.3; // Threshold for adding dirt
 
-// Function to create a block
-function createBlock(x, y, z, color) {
+// Load textures
+const textureLoader = new THREE.TextureLoader();
+const textures = {
+    grass: textureLoader.load('Textures/grass.png'),
+    dirt: textureLoader.load('Textures/dirt.png'),
+    stone: textureLoader.load('Textures/stone.png')
+};
+
+// Function to create a block with texture
+function createBlock(x, y, z, texture) {
     const geometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
-    const material = new THREE.MeshBasicMaterial({ color: color });
+    const material = new THREE.MeshBasicMaterial({ map: texture }); // Use texture map
     const block = new THREE.Mesh(geometry, material);
     block.position.set(x * blockSize, y * blockSize, z * blockSize);
     return block;
@@ -30,11 +39,26 @@ function generateChunk(chunkX, chunkZ) {
     for (let x = 0; x < chunkSize; x++) {
         for (let z = 0; z < chunkSize; z++) {
             // Get height based on noise value
-            const height = Math.floor(simplex.noise2D((chunkX * chunkSize + x) * noiseScale, (chunkZ * chunkSize + z) * noiseScale) * 5); // Max height of 5 blocks
-            const blockType = height > 0 ? 0x00ff00 : 0x8B4513; // Green for grass, brown for dirt
+            const noiseValue = simplex.noise2D((chunkX * chunkSize + x) * noiseScale, (chunkZ * chunkSize + z) * noiseScale);
+            const height = Math.floor(noiseValue * 5); // Max height of 5 blocks
+            let blockType = null;
+
+            // Determine block type and texture
+            if (height > 0) {
+                blockType = textures.grass; // Grass texture for grass blocks
+            } else {
+                blockType = textures.dirt; // Dirt texture for dirt blocks
+            }
+
             for (let y = 0; y <= height; y++) {
                 const block = createBlock(x + chunkX * chunkSize, y, z + chunkZ * chunkSize, blockType);
                 chunk.add(block);
+            }
+
+            // Add dirt blocks where the noise is below the threshold
+            if (noiseValue < dirtThreshold) {
+                const dirtBlock = createBlock(x + chunkX * chunkSize, 0, z + chunkZ * chunkSize, textures.dirt); // Dirt texture
+                chunk.add(dirtBlock);
             }
         }
     }
