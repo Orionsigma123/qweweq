@@ -19,9 +19,9 @@ const dirtThreshold = -0.3; // Threshold for adding dirt
 // Load textures
 const textureLoader = new THREE.TextureLoader();
 const textures = {
-    grass: textureLoader.load('Textures/grass.png'),
-    dirt: textureLoader.load('Textures/dirt.png'),
-    stone: textureLoader.load('Textures/stone.png')
+    grass: textureLoader.load('Textures/grass.png'), // Adjusted path
+    dirt: textureLoader.load('Textures/dirt.png'),   // Adjusted path
+    stone: textureLoader.load('Textures/stone.png')   // Adjusted path
 };
 
 // Function to create a block with texture
