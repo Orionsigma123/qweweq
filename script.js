@@ -1,4 +1,6 @@
+// ======================
 // Setup basic scene, camera, and renderer
+// ======================
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ alpha: true }); // Enable alpha for transparency
@@ -8,96 +10,86 @@ document.body.appendChild(renderer.domElement);
 // Set the background color of the scene
 renderer.setClearColor(0x87CEEB, 1); // Sky blue color
 
-const blockSize = 1;
-const chunkSize = 16; // Size of each chunk (16x16 blocks)
-const viewDistance = 5; // Chunks to render in each direction from the player
+// ======================
+// Texture Loading
+// ======================
+const grassTexture = new THREE.TextureLoader().load('Textures/grass.png');
+const dirtTexture = new THREE.TextureLoader().load('Textures/dirt.png');
+const stoneTexture = new THREE.TextureLoader().load('Textures/stone.png');
+
+// ======================
+// Chunk Generation Settings
+// ======================
+const chunkSize = 16; // Size of each chunk
+const chunkHeight = 5; // Max height of the terrain
 const noiseScale = 0.1; // Adjust for terrain smoothness
 const simplex = new SimplexNoise();
-const chunks = new Map(); // Store generated chunks
-const dirtThreshold = -0.3; // Threshold for adding dirt
+const chunks = {}; // Store generated chunks
 
-// Load textures
-const textureLoader = new THREE.TextureLoader();
-const textures = {
-    grass: textureLoader.load('Textures/grass.png'), // Grass texture
-    dirt: textureLoader.load('Textures/dirt.png'),   // Dirt texture
-    stone: textureLoader.load('Textures/stone.png')   // Stone texture
-};
-
-// Function to create a block with texture
-function createBlock(x, y, z, texture) {
-    const geometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
-    const material = new THREE.MeshBasicMaterial({ map: texture }); // Use texture map
+// ======================
+// Block Creation Function
+// ======================
+function createBlock(x, y, z, texture, type) {
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({ map: texture });
     const block = new THREE.Mesh(geometry, material);
-    block.position.set(x * blockSize, y * blockSize, z * blockSize);
+    block.position.set(x, y, z);
+    block.userData = { type }; // Add type to block for identification
     return block;
 }
 
-// Function to generate a chunk
+// ======================
+// Chunk Generation Function
+// ======================
 function generateChunk(chunkX, chunkZ) {
-    const chunk = new THREE.Group();
+    const chunk = new THREE.Group(); // Group to hold all blocks in this chunk
     for (let x = 0; x < chunkSize; x++) {
         for (let z = 0; z < chunkSize; z++) {
-            // Get height based on noise value
-            const noiseValue = simplex.noise2D((chunkX * chunkSize + x) * noiseScale, (chunkZ * chunkSize + z) * noiseScale);
-            const height = Math.floor(noiseValue * 5); // Max height of 5 blocks
-            
-            // Determine block type and texture
+            // Generate height based on Simplex noise
+            const height = Math.floor(simplex.noise2D((chunkX * chunkSize + x) * noiseScale, (chunkZ * chunkSize + z) * noiseScale) * chunkHeight);
+
             for (let y = 0; y <= height; y++) {
-                let blockType;
+                let texture = dirtTexture; // Default texture for dirt
+                let type = 'dirt'; // Default block type
+
                 if (y === height) {
-                    blockType = textures.grass; // Grass texture for the top block
-                } else if (y < height && y > 0) {
-                    blockType = textures.dirt; // Dirt texture for blocks below grass
-                } else {
-                    blockType = textures.stone; // Stone texture for ground level and below
+                    texture = grassTexture; // Grass on top
+                    type = 'grass';
+                } else if (y < height - 1) {
+                    texture = stoneTexture; // Stone for blocks below dirt
+                    type = 'stone';
                 }
-                
-                const block = createBlock(x + chunkX * chunkSize, y, z + chunkZ * chunkSize, blockType);
+
+                const block = createBlock(chunkX * chunkSize + x, y, chunkZ * chunkSize + z, texture, type);
                 chunk.add(block);
             }
-
-            // Add dirt blocks where the noise is below the threshold
-            if (noiseValue < dirtThreshold) {
-                const dirtBlock = createBlock(x + chunkX * chunkSize, 0, z + chunkZ * chunkSize, textures.dirt); // Dirt texture
-                chunk.add(dirtBlock);
-            }
         }
     }
-    return chunk;
+    chunks[`${chunkX},${chunkZ}`] = chunk; // Store the chunk in the chunks object
+    scene.add(chunk); // Add the chunk to the scene
 }
 
-// Function to update chunks based on player's position
-function updateChunks() {
+// ======================
+// Infinite World Generation
+// ======================
+function generateWorld() {
     const playerChunkX = Math.floor(camera.position.x / chunkSize);
     const playerChunkZ = Math.floor(camera.position.z / chunkSize);
-    
-    // Iterate through chunks to render
-    for (let x = playerChunkX - viewDistance; x <= playerChunkX + viewDistance; x++) {
-        for (let z = playerChunkZ - viewDistance; z <= playerChunkZ + viewDistance; z++) {
-            const chunkKey = `${x},${z}`;
-            if (!chunks.has(chunkKey)) {
-                const chunk = generateChunk(x, z);
-                chunks.set(chunkKey, chunk);
-                scene.add(chunk);
+    const renderDistance = 2; // Number of chunks to generate in each direction
+
+    for (let x = -renderDistance; x <= renderDistance; x++) {
+        for (let z = -renderDistance; z <= renderDistance; z++) {
+            const chunkKey = `${playerChunkX + x},${playerChunkZ + z}`;
+            if (!chunks[chunkKey]) { // Only generate if chunk doesn't already exist
+                generateChunk(playerChunkX + x, playerChunkZ + z);
             }
         }
     }
-
-    // Remove chunks that are too far away
-    chunks.forEach((chunk, key) => {
-        const [chunkX, chunkZ] = key.split(',').map(Number);
-        if (Math.abs(chunkX - playerChunkX) > viewDistance || Math.abs(chunkZ - playerChunkZ) > viewDistance) {
-            scene.remove(chunk);
-            chunks.delete(key);
-        }
-    });
 }
 
-// Position the camera to be just above the ground
-camera.position.set(25, 1.5, 25); // Adjust height to be just above the blocks
-
-// Player controls
+// ======================
+// Player Controls
+// ======================
 const playerSpeed = 0.1;
 const jumpForce = 0.2; // Jumping force
 let velocity = new THREE.Vector3(0, 0, 0);
@@ -182,7 +174,7 @@ function updatePlayer() {
     camera.position.y += velocity.y; // Update vertical position
 
     // Collision detection to prevent phasing through blocks
-    const groundHeight = Math.floor(simplex.noise2D(camera.position.x * noiseScale, camera.position.z * noiseScale) * 5); // Check height at camera position
+    const groundHeight = Math.floor(simplex.noise2D(camera.position.x * noiseScale, camera.position.z * noiseScale) * chunkHeight);
     if (camera.position.y < groundHeight + 1.5) {
         camera.position.y = groundHeight + 1.5; // Place the camera on top of the ground
     }
@@ -200,8 +192,8 @@ window.addEventListener('resize', () => {
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
+    generateWorld(); // Generate chunks around the player
     updatePlayer(); // Update player movement
-    updateChunks(); // Update chunks based on player position
     renderer.render(scene, camera);
 }
 
