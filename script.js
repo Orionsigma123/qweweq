@@ -19,9 +19,9 @@ const dirtThreshold = -0.3; // Threshold for adding dirt
 // Load textures
 const textureLoader = new THREE.TextureLoader();
 const textures = {
-    grass: textureLoader.load('Textures/grass.png'), // Adjusted path
-    dirt: textureLoader.load('Textures/dirt.png'),   // Adjusted path
-    stone: textureLoader.load('Textures/stone.png')   // Adjusted path
+    grass: textureLoader.load('Textures/grass.png'), // Grass texture
+    dirt: textureLoader.load('Textures/dirt.png'),   // Dirt texture
+    stone: textureLoader.load('Textures/stone.png')   // Stone texture
 };
 
 // Function to create a block with texture
@@ -41,16 +41,18 @@ function generateChunk(chunkX, chunkZ) {
             // Get height based on noise value
             const noiseValue = simplex.noise2D((chunkX * chunkSize + x) * noiseScale, (chunkZ * chunkSize + z) * noiseScale);
             const height = Math.floor(noiseValue * 5); // Max height of 5 blocks
-            let blockType = null;
-
+            
             // Determine block type and texture
-            if (height > 0) {
-                blockType = textures.grass; // Grass texture for grass blocks
-            } else {
-                blockType = textures.dirt; // Dirt texture for dirt blocks
-            }
-
             for (let y = 0; y <= height; y++) {
+                let blockType;
+                if (y === height) {
+                    blockType = textures.grass; // Grass texture for the top block
+                } else if (y < height && y > 0) {
+                    blockType = textures.dirt; // Dirt texture for blocks below grass
+                } else {
+                    blockType = textures.stone; // Stone texture for ground level and below
+                }
+                
                 const block = createBlock(x + chunkX * chunkSize, y, z + chunkZ * chunkSize, blockType);
                 chunk.add(block);
             }
