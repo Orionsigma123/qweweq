@@ -125,7 +125,7 @@ camera.position.set(25, 1.5, 25);
 // Player controls
 const playerSpeed = 0.1;
 const jumpForce = 0.2;
-let velocity = new THREE.Vector3(0, -0.01, 0); // Apply gravity
+let velocity = new THREE.Vector3(0, 0, 0);
 let isJumping = false;
 const keys = {};
 let mousePressed = false;
@@ -182,70 +182,81 @@ document.addEventListener('mousemove', (event) => {
     }
 });
 
-// Function to check for collisions
-function checkCollisions(newPosition) {
-    const raycaster = new THREE.Raycaster(camera.position, newPosition.clone().sub(camera.position).normalize());
-
-    raycaster.far = 1; // Check collision within a range of 1 unit
-    const intersects = raycaster.intersectObjects(scene.children, true);
-
-    if (intersects.length > 0) {
-        const distance = intersects[0].distance;
-        if (distance < 0.6) { // Adjust based on the player's height to climb blocks
-            return true; // Block collision, stop movement
-        }
-    }
-    return false;
-}
-
-// Function to detect if the player is grounded (standing on a block)
-function isGrounded() {
-    const downRay = new THREE.Raycaster(camera.position, new THREE.Vector3(0, -1, 0));
-    downRay.far = 1.6; // Ray length slightly below the player to detect the ground
-
-    const intersects = downRay.intersectObjects(scene.children, true);
-    return intersects.length > 0; // If there's any object beneath the player
-}
-
 // Function to handle player movement based on head orientation
 function updatePlayer() {
-    velocity.set(0, -0.01, 0); // Apply gravity to always pull down slightly
+    velocity.set(0, 0, 0); // Reset velocity
 
+    // Calculate the forward direction based on the camera's rotation, ignoring the Y-axis
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation);
+    forward.y = 0; // Prevent upward movement
+    forward.normalize(); // Normalize the vector
     const right = new THREE.Vector3(1, 0, 0).applyEuler(camera.rotation);
-
-    forward.y = 0; // Prevent vertical movement when moving forward/backward
-    right.y = 0;   // Prevent vertical movement when strafing
-
-    forward.normalize();
     right.normalize();
 
-    if (keys['KeyW']) {
-        velocity.add(forward.clone().multiplyScalar(playerSpeed));
+    if (keys['KeyW']) { // Move forward (W)
+        velocity.add(forward.clone().multiplyScalar(playerSpeed)); // Move in the forward direction
     }
-    if (keys['KeyS']) {
-        velocity.add(forward.clone().multiplyScalar(-playerSpeed));
+    if (keys['KeyS']) { // Move backward (S)
+        velocity.add(forward.clone().multiplyScalar(-playerSpeed)); // Move in the backward direction
     }
-    if (keys['KeyA']) {
-        velocity.add(right.clone().multiplyScalar(-playerSpeed));
+    if (keys['KeyA']) { // Move left (A)
+        velocity.add(right.clone().multiplyScalar(-playerSpeed)); // Move in the left direction
     }
-    if (keys['KeyD']) {
-        velocity.add(right.clone().multiplyScalar(playerSpeed));
+    if (keys['KeyD']) { // Move right (D)
+        velocity.add(right.clone().multiplyScalar(playerSpeed)); // Move in the right direction
     }
 
     // Jumping logic
-    if (keys['Space'] && isGrounded()) {
-        velocity.y = jumpForce;
+    if (keys['Space'] && !isJumping) {
+        isJumping = true;
+        velocity.y = jumpForce; // Apply jumping force
     }
 
+    // Apply gravity
+    if (isJumping) {
+        velocity.y -= 0.01; // Apply a simple gravity
+    }
+
+    // Check for ground contact to reset jumping
+    if (camera.position.y <= 1.5) {
+        isJumping = false;
+        camera.position.y = 1.5; // Reset camera height
+    } else {
+        // Limit upward movement to prevent flying
+        camera.position.y = Math.max(camera.position.y, 1.5);
+    }
+
+    // Calculate the potential new position
     const newPosition = camera.position.clone().add(velocity);
 
-    // Check for collisions with blocks
+    // Check for collisions
     if (!checkCollisions(newPosition)) {
+        // No collision, update the player's position
         camera.position.copy(newPosition);
+    } else {
+        // Collision detected, stop movement
+        velocity.set(0, 0, 0);
     }
 
-    updateCrosshair();
+    updateCrosshair(); // Update crosshair position
+}
+
+// Check for collisions with blocks
+function checkCollisions(newPosition) {
+    const raycaster = new THREE.Raycaster();
+    const direction = newPosition.clone().sub(camera.position).normalize(); // Direction of movement
+    raycaster.set(camera.position, direction);
+
+    // Check for collisions with blocks in the scene
+    const intersects = raycaster.intersectObjects(scene.children, true); // Check all objects in the scene
+
+    if (intersects.length > 0) {
+        const distance = intersects[0].distance;
+        if (distance < 1) { // If collision is within 1 unit, block movement
+            return true;
+        }
+    }
+    return false;
 }
 
 // Handle keyboard input
